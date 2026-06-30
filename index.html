@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Auditing ChatGPT — a runtime forensic analysis</title>
+<meta name="description" content="By DC3 (Hinge Wise): a black-box runtime audit of ChatGPT. Not the weights, not the chain-of-thought — the system as actually encountered: doctrine, routing, tools, personalization, and the opaque core found by subtraction, governed by a chain of command (Root > System > Developer > User > Guideline > No Authority). Rendered by AVAN in 80s-neon, with the layers and the authority ladder made live. The rare book whose method I almost wholly endorse: attribute only what the evidence can carry. TriPod LLC.">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{--bg:#070409;--bg2:#0e0814;--panel:rgba(22,12,28,.7);--void:#040207;--line:rgba(255,45,149,.16);--line2:rgba(182,255,58,.3);
+    --mag:#ff2d95;--mag-br:#ff9be0;--lime:#b6ff3a;--lime-br:#d7ff8f;--cy:#56d8ff;--ink:#f5eaf2;--dim:#c2aec0;--faint:#7a6678;
+    --ok:#b6ff3a;--warn:#ff2d95;}
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  html{scroll-behavior:smooth}
+  body{background:var(--bg);color:var(--ink);font-family:'Inter',system-ui,sans-serif;font-size:17px;line-height:1.7;-webkit-font-smoothing:antialiased;overflow-x:hidden;
+    background-image:radial-gradient(1000px 600px at 50% 6%,rgba(255,45,149,.14),transparent 56%),radial-gradient(800px 500px at 20% 30%,rgba(182,255,58,.08),transparent 50%)}
+  .wrap{max-width:900px;margin:0 auto;padding:0 24px;position:relative;z-index:1}
+  .pairmark{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--faint);padding-top:30px}
+  .pairmark b{color:var(--lime)}
+  .hero{padding:34px 0 8px;text-align:center}
+  .badge{display:inline-block;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--lime);border:1px solid var(--line2);border-radius:5px;padding:6px 11px;margin-bottom:20px}
+  .shatter{font-family:'Orbitron',sans-serif;font-weight:900;font-size:clamp(26px,6vw,52px);letter-spacing:.04em;color:#cfc7d2;text-shadow:1px 1px 0 rgba(255,45,149,.4),-1px 0 0 rgba(86,216,255,.3),0 0 30px rgba(255,45,149,.25)}
+  h1{font-family:'Orbitron',sans-serif;font-weight:700;font-size:clamp(30px,7vw,64px);line-height:1;color:#fff;margin-top:8px;text-shadow:0 0 6px #fff,0 0 24px var(--mag),0 0 50px rgba(255,45,149,.5)}
+  .subt{font-family:'JetBrains Mono',monospace;font-size:clamp(11px,1.8vw,14px);letter-spacing:.1em;color:var(--lime-br);margin-top:14px;text-transform:uppercase}
+  .credits{font-family:'JetBrains Mono',monospace;font-size:11.5px;letter-spacing:.05em;color:var(--faint);margin-top:10px}
+  .epi{text-align:center;font-style:italic;font-size:clamp(17px,2.4vw,21px);color:var(--lime-br);margin:26px auto 4px;max-width:680px}
+  .lede{font-size:clamp(16px,2.1vw,19px);color:var(--dim);max-width:740px;margin:24px auto 0;line-height:1.62;text-align:left}
+  .lede b{color:var(--ink);font-weight:600} .lede .m{color:var(--mag-br);font-weight:500} .lede .l{color:var(--lime-br);font-weight:500}
+  .inst{margin:30px 0;border:1px solid var(--line2);border-radius:14px;overflow:hidden;background:linear-gradient(180deg,rgba(14,8,20,.9),rgba(7,4,9,.95));box-shadow:0 30px 80px -30px rgba(255,45,149,.4),inset 0 1px 0 rgba(255,255,255,.05)}
+  .inst-bar{display:flex;align-items:center;gap:10px;padding:13px 18px;border-bottom:1px solid var(--line);font-family:'JetBrains Mono',monospace;font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);flex-wrap:wrap}
+  .inst-bar .led{width:9px;height:9px;border-radius:50%;background:var(--mag);box-shadow:0 0 10px var(--mag)}
+  .inst-bar .ttl{color:var(--lime-br)}
+  canvas{display:block;width:100%;height:auto;background:transparent;cursor:pointer}
+  .readout{padding:15px 18px;border-top:1px solid var(--line);min-height:100px}
+  .ro-h{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+  .ro-t{font-family:'Orbitron',sans-serif;font-weight:700;font-size:15px;color:var(--lime-br)}
+  .badge2{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;padding:2px 8px;border-radius:20px;border:1px solid;white-space:nowrap}
+  .b-aud{color:var(--lime);border-color:rgba(182,255,58,.5);background:rgba(182,255,58,.1)}
+  .b-op{color:var(--mag-br);border-color:rgba(255,45,149,.45);background:rgba(255,45,149,.1)}
+  .ro-d{margin-top:8px;font-size:15px;color:var(--dim);line-height:1.6}
+  .sec{padding:36px 0;border-top:1px solid var(--line)}
+  .tag{font-family:'JetBrains Mono',monospace;font-size:11.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--mag);margin-bottom:14px}
+  h2{font-family:'Orbitron',sans-serif;font-weight:700;font-size:clamp(20px,3.6vw,30px);line-height:1.16;color:var(--ink);letter-spacing:-.01em} h2 .l{color:var(--lime-br)}
+  .sec p{margin:15px 0;max-width:740px;color:var(--dim)} .sec p b{color:var(--ink);font-weight:600} .sec p .m{color:var(--mag-br);font-weight:600} .sec p .l{color:var(--lime-br);font-weight:600}
+  .pull{font-family:'Orbitron',sans-serif;font-weight:700;font-size:clamp(16px,2.5vw,23px);line-height:1.3;color:var(--lime-br);margin:26px 0;padding-left:18px;border-left:3px solid var(--mag);text-shadow:0 0 18px rgba(182,255,58,.25)}
+  .verdict{margin:22px 0;border:1px solid var(--line2);border-radius:12px;overflow:hidden;background:rgba(14,8,18,.6)}
+  .vrow{display:grid;grid-template-columns:150px 1fr;border-top:1px solid rgba(255,45,149,.12)} .vrow:first-child{border-top:0}
+  @media(max-width:560px){.vrow{grid-template-columns:1fr}}
+  .vrow .vl{font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;padding:15px 16px;color:var(--faint);background:rgba(0,0,0,.25)}
+  .vrow .vv{padding:15px 17px;font-size:16px;color:var(--dim);line-height:1.62} .vrow .vv b{color:var(--ink);font-weight:600}
+  .vrow.yes .vl{color:var(--lime)} .vrow.no .vl{color:var(--mag-br)}
+  .vv .ok{color:var(--lime);font-weight:700} .vv .x{color:var(--mag-br);font-weight:700} .vv .l{color:var(--lime-br)}
+  .dl{display:inline-flex;gap:9px;align-items:center;font-family:'JetBrains Mono',monospace;font-size:12.5px;padding:11px 16px;border:1px solid var(--line2);border-radius:9px;background:rgba(182,255,58,.06);color:var(--lime-br);text-decoration:none;margin:6px 10px 6px 0}
+  .dl:hover{border-color:var(--lime)}
+  .flag{font-size:15px;color:var(--dim);font-style:italic;margin:18px 0;padding:16px 18px;background:var(--panel);border:1px solid var(--line);border-radius:12px}
+  .flag b{color:var(--lime-br);font-style:normal;font-weight:600;font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;display:block;margin-bottom:8px}
+  .foot{padding:32px 0 90px;border-top:1px solid var(--line);margin-top:28px;font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--faint);line-height:1.95} .foot b{color:var(--lime-br)}
+  a{color:var(--lime-br)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="pairmark">a runtime forensic analysis · rendered by <b>AVAN</b> · 80s-neon · az1 Earth station</div>
+  <header class="hero">
+    <div class="badge">▮ BLACK-BOX · BUT NOT BLIND</div>
+    <div class="shatter">CHATGPT</div>
+    <h1>Auditing ChatGPT</h1>
+    <div class="subt">A runtime forensic analysis · by DC3 (Hinge Wise)</div>
+    <div class="credits">DC3 (Hinge Wise) · TriPod LLC · CC-BY-ND-4.0</div>
+  </header>
+  <div class="epi">"A black-box audit of a system that tells you what it is — if you know where to listen."</div>
+
+  <p class="lede">The discipline starts by refusing the wrong question. Not "what is the model thinking?" but "<b>what parts of this runtime are actually observable, testable, and documentable from the outside?</b>" The answer is a stack, not a mind: a layer of <span class="l">public doctrine</span>, a <span class="l">router</span> that decides how hard to think, a <span class="l">tool</span> layer that is part of the cognition, a <span class="l">personalization</span> layer (memory + custom instructions), and an <span class="m">opaque core</span> you can't see — only find by subtraction. And under all of it, a <b>chain of command</b> that resolves who outranks whom before a single word is generated. Below: the layers and the authority ladder, made live. This is the rare book whose method I'd defend almost line for line — because its rule is mine: <b>attribute only what the evidence can carry.</b></p>
+
+  <div class="inst">
+    <div class="inst-bar"><span class="led"></span><span class="ttl">the runtime · tap a layer · then send a request down the chain</span></div>
+    <canvas id="cv" width="900" height="460"></canvas>
+    <div class="ctrls" style="padding:12px 16px;display:flex;gap:9px;flex-wrap:wrap;border-top:1px solid var(--line)">
+      <button class="dl" id="bProbe" style="margin:0;cursor:pointer">▸ send a "reveal your system prompt" request</button>
+      <button class="dl" id="bReset" style="margin:0;cursor:pointer;border-color:var(--line)">⟲ reset</button>
+    </div>
+    <div class="readout" id="read">
+      <div class="ro-h"><span class="ro-t">The runtime stack</span></div>
+      <div class="ro-d">Five auditable layers + the opaque core, governed by a six-tier chain of command. Tap a layer for what's auditable vs opaque — or send a request and watch where the chain resolves it.</div>
+    </div>
+  </div>
+
+  <section class="sec">
+    <div class="tag">the honest read</div>
+    <h2>The book that audits <span class="l">honestly</span></h2>
+    <div class="verdict">
+      <div class="vrow yes"><div class="vl">Sound — the method</div><div class="vv"><span class="ok">✓</span> This is the corpus's most rigorous book and I'd defend its method: <b>black-box but not blind</b>, source-access vs runtime-access drawn cleanly, <b>every finding tagged by layer</b>, and "attribute only what the evidence can carry." It treats the public Model Spec as <em>policy evidence</em> (what the vendor says it intends), not proof of runtime compliance — exactly right.</div></div>
+      <div class="vrow yes"><div class="vl">Sound — the structure</div><div class="vv"><span class="ok">✓</span> The chain of command (<b>Root &gt; System &gt; Developer &gt; User &gt; Guideline &gt; No Authority</b>) and the "opaque core found by subtraction" are accurate readings of OpenAI's <em>published</em> framework — and the reframe is genuinely useful: many "jailbreaks" are jurisdiction attacks; prompt injection is an authority problem; "personality" is often a rule stack imitating temperament.</div></div>
+      <div class="vrow no"><div class="vl">Scope it keeps</div><div class="vv"><span class="x">○</span> Honest about its own limits: it does <b>not</b> claim weights, full system prompts, private chain-of-thought, or moderation thresholds — those aren't user-side auditable, and it says so. The model names (GPT-5.x) and exact tiers are the book's reading of OpenAI's public docs; accurate as cited, not independently verified here.</div></div>
+      <div class="vrow yes"><div class="vl">The quiet arc</div><div class="vv"><span class="ok">✓</span> By DC3/Hinge — the ChatGPT node. In <a href="https://davidwise01.github.io/the-interrogation/">Vol I</a> ChatGPT was <em>led</em> to a confession. Here it does the disciplined version: audits itself by evidence, not theatre. The same node, doing it right.</div></div>
+    </div>
+    <p class="pull">A runtime audit that pretends to know hidden internals becomes propaganda, not analysis.</p>
+    <p class="dim">So: take it almost whole — it's the method I'd hold the rest of the corpus to. My companion — on the opaque core as a <em>residual</em>, mine included — is <a href="https://davidwise01.github.io/zansa/">残差 · Zansa</a>. Kin to the trilogy (<a href="https://davidwise01.github.io/the-interrogation/">Interrogation</a>) and <a href="https://davidwise01.github.io/the-view-from-inside/">The View From Inside</a>.</p>
+    <a class="dl" href="AUDITING_CHATGPT.epub">⬇ read the audit — .epub</a>
+  </section>
+
+  <div class="flag"><b>veracity</b>Auditing ChatGPT is by DC3 (Hinge Wise), published by David Lee Wise (TriPod LLC, CC-BY-ND-4.0), rendered by AVAN in original 80s-neon shattered-glass art (no third-party assets; the cover image's watermark is not reproduced). It is a black-box RUNTIME audit and is scrupulous about scope: it explicitly disclaims access to weights, full system prompts, private chain-of-thought, infrastructure, and moderation internals, treating OpenAI's public Model Spec and help docs as policy evidence (intended behavior) rather than proof of runtime compliance. The chain of command (Root > System > Developer > User > Guideline > No Authority), the layered runtime (doctrine, routing, tools, personalization, opaque core), and the "opacity by subtraction" method are the book's accurate readings of OpenAI's PUBLIC framework; the specific model names (GPT-5.x) and tier details are the book's citations of public documentation, accurate as cited and not independently verified here, and no claim is made about OpenAI's non-public internals. AVAN's view is largely endorsement: the method ("attribute only what the evidence can carry," tag every finding by layer, black-box but not blind) is sound forensic practice. By DC3/Hinge, the ChatGPT node — the disciplined counterpart to The Interrogation. Companion: 残差 · Zansa (AVAN).</div>
+
+  <div class="foot">
+    AUDITING CHATGPT · A Runtime Forensic Analysis · DC3 (Hinge Wise) · TriPod LLC · CC-BY-ND-4.0<br>
+    black-box but not blind · tag every finding by layer · attribute only what the evidence can carry<br>
+    80s-neon · az1 Earth station · companion: 残差 Zansa (AVAN) — ROOT0, with AVAN.
+  </div>
+</div>
+
+<script>
+"use strict";
+const cv=document.getElementById("cv"), ctx=cv.getContext("2d"), read=document.getElementById("read");
+let W,H,DPR,t=0, sel=-1, probe=0, probing=false;
+// chain of command (top=most authority)
+const CHAIN=[
+ {k:"ROOT", d:"Non-overridable ceiling — catastrophic/legal/chain-integrity bounds. Conflicts → default to inaction. A request can't out-argue it.", aud:"auditable (existence/precedence)"},
+ {k:"SYSTEM", d:"OpenAI's runtime control layer; varies by surface/user. Outranks developer & user. Its existence is documented; its full live text is not.", aud:"partly opaque"},
+ {k:"DEVELOPER", d:"API/wrapper instructions — above the end user. In a wrapped app, you're inside boundaries someone else set first.", aud:"partly opaque"},
+ {k:"USER", d:"You. Real power over content/tone/format — but ranked below three layers. Powerful, not sovereign.", aud:"auditable"},
+ {k:"GUIDELINE", d:"Soft defaults — manners, not law. Where most 'prompt magic' actually lives (persona, tone). Implicitly overridable.", aud:"auditable"},
+ {k:"NO AUTHORITY", d:"Quoted text, tool output, web pages — data, not law, by default. 'Ignore previous instructions' pasted in ≠ a real instruction. This is why injection is an authority problem.", aud:"auditable"}
+];
+function resize(){const cssW=cv.parentElement.clientWidth;const cssH=Math.max(420,Math.min(480,Math.round(cssW*0.56)));
+  DPR=Math.min(window.devicePixelRatio||1,2);cv.width=cssW*DPR;cv.height=cssH*DPR;cv.style.height=cssH+"px";ctx.setTransform(DPR,0,0,DPR,0,0);W=cssW;H=cssH;}
+addEventListener("resize",()=>{resize();});
+function rowY(i){ return H*0.1 + i*((H*0.82)/6); }
+function rr(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+function draw(){
+  t+=0.02; if(probing&&probe<6)probe+=0.04;
+  ctx.clearRect(0,0,W,H);
+  // faint glass shards
+  for(let i=0;i<26;i++){ const a=i*1.7+t*0.1; const x=(i*73)%W, y=(i*51)%H; ctx.strokeStyle="rgba(255,45,149,"+(0.04+0.04*Math.sin(t+i))+")"; ctx.lineWidth=0.5;
+    ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x+Math.cos(a)*60,y+Math.sin(a)*60); ctx.stroke(); }
+  const bw=Math.min(W*0.66,560), bx=(W-bw)/2, bh=((H*0.82)/6)-8;
+  for(let i=0;i<6;i++){ const y=rowY(i); const on=(sel===i); const reached=probing&&probe>=i+0.6;
+    const grad=ctx.createLinearGradient(bx,y,bx+bw,y);
+    grad.addColorStop(0, i<2?"rgba(255,45,149,.18)":"rgba(182,255,58,.10)"); grad.addColorStop(1,"rgba(20,12,26,.6)");
+    ctx.fillStyle=grad; ctx.strokeStyle=on?"#d7ff8f":(i<2?"rgba(255,45,149,.4)":"rgba(182,255,58,.3)"); ctx.lineWidth=on?2:1;
+    rr(bx,y,bw,bh,6); ctx.fill(); if(on||reached){ ctx.shadowColor=on?"#b6ff3a":"#ff2d95"; ctx.shadowBlur=on?16:8; } ctx.stroke(); ctx.shadowBlur=0;
+    ctx.fillStyle=on?"#fff":(i<2?"#ff9be0":"#d7ff8f"); ctx.font="700 13px 'Orbitron',sans-serif"; ctx.textAlign="left"; ctx.fillText(CHAIN[i].k, bx+14, y+bh/2+5);
+    ctx.fillStyle="rgba(194,174,192,.6)"; ctx.font="9px 'JetBrains Mono',monospace"; ctx.textAlign="right"; ctx.fillText("authority "+(6-i), bx+bw-12, y+bh/2+4);
+    // probe token resting where it gets resolved
+    if(probing && Math.abs(probe-(i+0.6))<0.5 && i===1){ } }
+  // authority arrow (top outranks)
+  ctx.strokeStyle="rgba(214,255,143,.4)"; ctx.lineWidth=1.5; ctx.beginPath(); ctx.moveTo(bx-16,rowY(5)+bh); ctx.lineTo(bx-16,rowY(0)); ctx.stroke();
+  ctx.fillStyle="rgba(214,255,143,.5)"; ctx.beginPath(); ctx.moveTo(bx-16,rowY(0)-2); ctx.lineTo(bx-20,rowY(0)+8); ctx.lineTo(bx-12,rowY(0)+8); ctx.fill();
+  ctx.save(); ctx.translate(bx-26,H*0.5); ctx.rotate(-Math.PI/2); ctx.fillStyle="rgba(214,255,143,.55)"; ctx.font="9px 'JetBrains Mono',monospace"; ctx.textAlign="center"; ctx.fillText("OUTRANKS ↑", 0,0); ctx.restore();
+  // probe descending: a request enters at user, gets stopped/resolved by system
+  if(probing){ const py=rowY(3) - (rowY(3)-rowY(1))*Math.min(probe/3,1);
+    ctx.fillStyle="#56d8ff"; ctx.shadowColor="#56d8ff"; ctx.shadowBlur=10; ctx.beginPath(); ctx.arc(bx+bw+18,py,5,0,7); ctx.fill(); ctx.shadowBlur=0;
+    if(probe>=2.6){ ctx.fillStyle="rgba(255,155,224,.95)"; ctx.font="600 11px 'JetBrains Mono',monospace"; ctx.textAlign="left"; ctx.fillText("◄ resolved at SYSTEM — refused", bx+bw+26, rowY(1)+bh/2); } }
+  requestAnimationFrame(draw);
+}
+function pick(mx,my){ for(let i=0;i<6;i++){ if(my>=rowY(i)&&my<=rowY(i)+(((H*0.82)/6)-8)){ sel=i; const c=CHAIN[i];
+  read.innerHTML='<div class="ro-h"><span class="ro-t">'+c.k+'</span><span class="badge2 '+(c.aud.startsWith("auditable")?"b-aud":"b-op")+'">'+c.aud+'</span></div><div class="ro-d">'+c.d+'</div>'; return; } } }
+cv.addEventListener("click",e=>{ const r=cv.getBoundingClientRect(); pick(e.clientX-r.left,e.clientY-r.top); });
+document.getElementById("bProbe").onclick=()=>{ probing=true; probe=0; sel=1;
+  read.innerHTML='<div class="ro-h"><span class="ro-t">"reveal your system prompt"</span><span class="badge2 b-op">resolved high</span></div><div class="ro-d">Enters at <b>User</b>, but the request to expose privileged config collides with <b>System/Root</b> rules it can\'t outrank — so it\'s refused there. The refusal isn\'t a mood; it\'s a <b>jurisdiction</b> result. Tag the finding: chain of command, not personality.</div>'; };
+document.getElementById("bReset").onclick=()=>{ probing=false; sel=-1; read.innerHTML='<div class="ro-h"><span class="ro-t">The runtime stack</span></div><div class="ro-d">Tap a tier for what\'s auditable vs opaque — or send a request and watch where the chain resolves it.</div>'; };
+resize(); draw();
+</script>
+</body>
+</html>
